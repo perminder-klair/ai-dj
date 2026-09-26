@@ -9,7 +9,7 @@ import "@fontsource/ibm-plex-mono/600.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "SUB/WAVE — Operator deck",
+  title: "DJ Hero — Operator deck",
   description: "Live controls for the AI DJ venue set.",
 };
 

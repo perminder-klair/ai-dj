@@ -118,7 +118,7 @@ def load_speech() =
 end
 thread.run(every=0.5, load_speech)
 speech = switch(track_sensitive=false, [({speech_allowed()}, speech_queue)])
-music = amplify(fun () -> if speech.is_ready() then 0.28 else 1.0 end, music)
+music = amplify(fun () -> if speech.is_ready() then 0.12 else 1.0 end, music)
 music = add(normalize=false, [music, speech])
 output.icecast(
   %mp3(bitrate=192, samplerate=44100, stereo=true),
@@ -127,6 +127,6 @@ output.icecast(
   port=8000,
   password=environment.get("ICECAST_SOURCE_PASSWORD"),
   mount="/live.mp3",
-  name="AI DJ rehearsal",
+  name="DJ Hero",
   music
 )

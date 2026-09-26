@@ -31,7 +31,7 @@ function RecordArt({ playing, title }: { playing: boolean; title: string }) {
       <div className="record-orbit" />
       <div className="record">
         <div className="record-label">
-          <span className="record-label-top">SUB/WAVE · SIDE A</span>
+          <span className="record-label-top">DJ HERO · SIDE A</span>
           <span className="record-spindle" />
           <strong>{title}</strong>
           <span className="record-label-bottom">DIRECT DRIVE / 33 RPM</span>
@@ -52,7 +52,7 @@ function Sleeve({ track }: { track?: Track }) {
       <div className="sleeve-disc">
         <div className="sleeve-core" />
       </div>
-      <span>SW / {track?.year ?? "26"}</span>
+      <span>DJH / {track?.year ?? "26"}</span>
     </div>
   );
 }
@@ -245,7 +245,7 @@ export default function Deck() {
   if (view === "loading")
     return (
       <main className="loading-screen">
-        <span className="brand">SUB/WAVE</span>
+        <span className="brand">DJ HERO</span>
         <p>Connecting to the deck…</p>
       </main>
     );
@@ -255,7 +255,7 @@ export default function Deck() {
         <div className="login-card">
           <span className="eyebrow accent">OPERATOR ACCESS / 01</span>
           <h1>
-            SUB<span>/</span>WAVE
+            DJ <span>HERO</span>
           </h1>
           <p>The booth is yours. Sign in to control the set.</p>
           <form onSubmit={signIn}>
@@ -299,7 +299,7 @@ export default function Deck() {
       />
       <header className="masthead">
         <div className="brand">
-          SUB<span>/</span>WAVE
+          DJ <span>HERO</span>
         </div>
         <div className="masthead-right">
           <span className="live-mark">
@@ -332,7 +332,7 @@ export default function Deck() {
           </div>
           <RecordArt
             playing={status === "running" && !!current}
-            title={current?.title ?? "SUB/WAVE"}
+            title={current?.title ?? "DJ HERO"}
           />
           <div className="transport">
             <div className="transport-buttons">
@@ -444,7 +444,7 @@ export default function Deck() {
                           ? "End of the set"
                           : "No record playing")}
                 </h1>
-                <div className="artist">{current?.artist ?? "SUB/WAVE"}</div>
+                <div className="artist">{current?.artist ?? "DJ HERO"}</div>
                 <div className="album">
                   {current?.album ??
                     (state ? `EVENT ${state.id}` : "WAITING FOR CONTROLLER")}
