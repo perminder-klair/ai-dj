@@ -7,6 +7,8 @@ export interface EventTrack extends Track {
   album?: string;
   genre?: string;
   year?: number;
+  /** A listener request outside the frozen playlist; never offered to the autonomous selector. */
+  requestOnly?: boolean;
 }
 
 export interface QueueEntry {
@@ -89,6 +91,9 @@ export function addSelection(
 ): EventState {
   if (state.status === "stopped") throw new Error("Event is stopped");
   if (source !== "operator" && operatorOverride) throw new Error("Only operator selections may override eligibility");
+  if (source !== "operator" && state.pool.find((track) => track.id === trackId)?.requestOnly) {
+    throw new SelectionError(["outside-event-pool"]);
+  }
   const upcoming = [...state.upcoming, {
     trackId, source, reason, protected: source === "operator", committed: false,
     ...(source === "operator" && operatorOverride ? { operatorOverride } : {}),
@@ -208,7 +213,7 @@ export function eligibleCandidates(state: EventState, nowMs: number): EventTrack
     startMs += track.durationMs - CROSSFADE_MS;
   }
   if (startMs >= state.plannedEndMs) return [];
-  return state.pool.filter((track) => checkSelection({
+  return state.pool.filter((track) => !track.requestOnly && checkSelection({
     source: "agent", trackId: track.id, eventPool: state.pool,
     history: selectionHistory(state), upcoming, expectedStartMs: startMs,
   }).eligible);
@@ -247,12 +252,12 @@ export function buildSchedule(state: EventState, nowMs: number): string[] {
 }
 
 /** Build a no-repeat fallback order and check five hours of playable coverage. */
-export function prepareFallback(pool: readonly EventTrack[], startMs: number): { order: string[]; coverageMs: number } {
+export function prepareFallback(pool: readonly EventTrack[], startMs: number, requiredCoverageMs = REQUIRED_COVERAGE_MS): { order: string[]; coverageMs: number } {
   if (!pool.length) throw new Error("Event pool is empty");
   const order: string[] = [];
   const upcoming: PlannedTrack[] = [];
   let nextStartMs = startMs;
-  while (order.length < pool.length && nextStartMs - startMs < REQUIRED_COVERAGE_MS) {
+  while (order.length < pool.length) {
     const track = pool.find((candidate) => checkSelection({
       source: "fallback", trackId: candidate.id, eventPool: pool, history: [], upcoming, expectedStartMs: nextStartMs,
     }).eligible);
@@ -262,8 +267,9 @@ export function prepareFallback(pool: readonly EventTrack[], startMs: number): {
     nextStartMs += track.durationMs - CROSSFADE_MS;
   }
   const coverageMs = order.length ? nextStartMs - startMs + CROSSFADE_MS : 0;
-  if (coverageMs < REQUIRED_COVERAGE_MS) {
-    throw new Error(`Fallback covers ${(coverageMs / 3_600_000).toFixed(2)} hours; five hours required`);
+  if (coverageMs < requiredCoverageMs) {
+    const required = requiredCoverageMs === REQUIRED_COVERAGE_MS ? "five hours" : `${(requiredCoverageMs / 3_600_000).toFixed(2)} hours`;
+    throw new Error(`Fallback covers ${(coverageMs / 3_600_000).toFixed(2)} hours; ${required} required`);
   }
   return { order, coverageMs };
 }

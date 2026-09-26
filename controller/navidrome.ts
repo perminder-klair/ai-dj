@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Manifest, ManifestTrack } from "./prepare.ts";
+import type { EventTrack } from "./event.ts";
 
 export interface NavidromeConfig {
   endpoint: string;
@@ -46,6 +47,63 @@ interface PlaylistsResponse {
     error?: { message?: string };
     playlists?: { playlist?: NavidromePlaylist[] | NavidromePlaylist };
   };
+}
+
+export interface LibrarySong {
+  id: string;
+  title: string;
+  artist: string;
+  artistId: string;
+  durationMs: number;
+  album?: string;
+  genre?: string;
+  year?: number;
+}
+
+function songMetadata(song: Song): LibrarySong {
+  if (typeof song.id !== "string" || !song.id || !Number.isFinite(song.duration) || (song.duration ?? 0) <= 5) {
+    throw new Error("Navidrome returned a song without an id or usable duration");
+  }
+  return {
+    id: song.id, title: song.title || song.id, artist: song.artist || "Unknown artist",
+    artistId: song.artistId || song.artist || "unknown-artist", durationMs: Math.round(song.duration! * 1000),
+    ...(song.album ? { album: song.album } : {}),
+    ...(song.genre ? { genre: song.genre } : {}),
+    ...(Number.isInteger(song.year) ? { year: song.year } : {}),
+  };
+}
+
+async function jsonResponse(config: NavidromeConfig, method: string, parameters: Record<string, string>): Promise<Record<string, unknown>> {
+  const response = await fetcher(config)(subsonicUrl(config, method, parameters));
+  if (!response.ok || !response.headers.get("content-type")?.includes("json")) {
+    throw new Error(`Navidrome ${method} failed: HTTP ${response.status}`);
+  }
+  const payload = await response.json() as { "subsonic-response"?: Record<string, unknown> };
+  const body = payload["subsonic-response"];
+  if (body?.status !== "ok") {
+    const error = body?.error as { message?: string } | undefined;
+    throw new Error(`Navidrome ${method} failed: ${error?.message ?? "invalid response"}`);
+  }
+  return body;
+}
+
+export async function searchNavidromeSongs(config: NavidromeConfig, query: string): Promise<LibrarySong[]> {
+  const term = query.trim();
+  if (term.length < 2 || term.length > 120) throw new Error("Search must be 2–120 characters");
+  const body = await jsonResponse(config, "search3", { query: term, artistCount: "0", albumCount: "0", songCount: "30" });
+  const result = body.searchResult3 as { song?: Song[] | Song } | undefined;
+  const songs = result?.song;
+  return (Array.isArray(songs) ? songs : songs ? [songs] : []).map(songMetadata);
+}
+
+export async function fetchNavidromeRequestTrack(config: NavidromeConfig, trackId: string, musicDirectory: string): Promise<EventTrack> {
+  if (!trackId || trackId.length > 512) throw new Error("Invalid track id");
+  const body = await jsonResponse(config, "getSong", { id: trackId });
+  const song = body.song as Song | undefined;
+  if (!song || song.id !== trackId) throw new Error("Navidrome returned a different song");
+  const metadata = songMetadata(song);
+  const file = await downloadSong(config, song, musicDirectory, "requests");
+  return { ...metadata, localPath: `/music/${file}`, requestOnly: true };
 }
 
 function subsonicUrl(config: NavidromeConfig, method: string, parameters: Record<string, string>): URL {
@@ -103,7 +161,7 @@ async function downloadSong(config: NavidromeConfig, song: Song, musicDirectory:
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const response = await fetcher(config)(subsonicUrl(config, "download", { id: song.id }));
-  if (!response.ok || !response.body || response.headers.get("content-type")?.includes("json")) {
+  if (!response.ok || !response.body || /json|xml|html/i.test(response.headers.get("content-type") ?? "")) {
     throw new Error(`Navidrome download failed for track ${song.id}: HTTP ${response.status}`);
   }
   const temporary = `${destination}.${randomUUID()}.part`;

@@ -14,6 +14,6 @@ export async function controller(
     },
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: "no-store",
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(path === "/request" ? 120000 : path === "/announce" ? 90000 : 5000),
   });
 }

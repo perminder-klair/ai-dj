@@ -67,6 +67,10 @@ export default function Deck() {
   const [password, setPassword] = useState("");
   const [steering, setSteering] = useState("");
   const [search, setSearch] = useState("");
+  const [librarySource, setLibrarySource] = useState<"pool" | "all">("pool");
+  const [libraryResults, setLibraryResults] = useState<Track[]>([]);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryError, setLibraryError] = useState("");
   const [selectedTrack, setSelectedTrack] = useState("");
   const [showLibrary, setShowLibrary] = useState(false);
   const [replaceIndex, setReplaceIndex] = useState<number | null>(null);
@@ -112,6 +116,31 @@ export default function Deck() {
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(clock);
   }, []);
+
+  useEffect(() => {
+    if (!showLibrary || librarySource !== "all" || search.trim().length < 2) {
+      setLibraryResults([]);
+      setLibraryLoading(false);
+      setLibraryError("");
+      return;
+    }
+    const abort = new AbortController();
+    const timer = window.setTimeout(async () => {
+      setLibraryLoading(true);
+      setLibraryError("");
+      try {
+        const response = await fetch(`/api/library-search?q=${encodeURIComponent(search.trim())}`, { signal: abort.signal });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? "Library search failed");
+        setLibraryResults(data.songs as Track[]);
+      } catch (error) {
+        if (!abort.signal.aborted) setLibraryError(error instanceof Error ? error.message : "Library search failed");
+      } finally {
+        if (!abort.signal.aborted) setLibraryLoading(false);
+      }
+    }, 300);
+    return () => { abort.abort(); window.clearTimeout(timer); };
+  }, [showLibrary, librarySource, search]);
 
   async function signIn(event: FormEvent) {
     event.preventDefault();
@@ -201,6 +230,7 @@ export default function Deck() {
   const pool = useMemo(
     () =>
       (state?.pool ?? [])
+        .filter((track) => !track.requestOnly)
         .filter((track) =>
           `${track.title} ${track.artist} ${track.album ?? ""}`
             .toLowerCase()
@@ -366,6 +396,15 @@ export default function Deck() {
                 <span>{state?.speechMuted ? "×" : "◖"}</span>
                 <small>VOICE</small>
               </button>
+              <button
+                className="round-control"
+                onClick={() => void command("announce", {}, "DJ line sent to the stream")}
+                disabled={!canControl || status !== "running" || state?.speechMuted}
+                title="Generate and speak a DJ line"
+              >
+                <span>♫</span>
+                <small>SPEAK</small>
+              </button>
             </div>
             <button
               className={`signal-block audio-monitor${listening ? " listening" : ""}`}
@@ -469,6 +508,7 @@ export default function Deck() {
                             className="queue-action"
                             onClick={() => {
                               setShowLibrary(true);
+                              setLibrarySource("pool");
                               setSelectedTrack("");
                               setReplaceIndex(index);
                             }}
@@ -559,7 +599,7 @@ export default function Deck() {
               >
                 BROWSE MUSIC ↗
               </button>
-              <span>{state?.pool.length ?? 0} APPROVED TRACKS</span>
+              <span>{state?.pool.filter((track) => !track.requestOnly).length ?? 0} APPROVED TRACKS</span>
             </div>
           </div>
         </section>
@@ -615,7 +655,7 @@ export default function Deck() {
           >
             <div className="modal-header">
               <div>
-                <span className="eyebrow accent">THE APPROVED POOL</span>
+                <span className="eyebrow accent">{librarySource === "pool" ? "THE APPROVED POOL" : "WHOLE LIBRARY · REQUESTS"}</span>
                 <h2 id="library-title">
                   {replaceIndex === null ? "Find a record" : "Replace record"}
                 </h2>
@@ -628,15 +668,21 @@ export default function Deck() {
                 ×
               </button>
             </div>
+            <div className="library-tabs" role="tablist" aria-label="Music source">
+              <button type="button" role="tab" aria-selected={librarySource === "pool"} className={librarySource === "pool" ? "active" : ""}
+                onClick={() => { setLibrarySource("pool"); setSelectedTrack(""); }}>EVENT POOL</button>
+              {replaceIndex === null && <button type="button" role="tab" aria-selected={librarySource === "all"} className={librarySource === "all" ? "active" : ""}
+                onClick={() => { setLibrarySource("all"); setSelectedTrack(""); }}>WHOLE LIBRARY</button>}
+            </div>
             <input
               className="library-search"
               autoFocus
               placeholder="Search title, artist, or album"
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => { setSearch(event.target.value); setSelectedTrack(""); setLibraryResults([]); }}
             />
             <div className="library-list">
-              {pool.map((track) => (
+              {(librarySource === "pool" ? pool : libraryResults).map((track) => (
                 <button
                   className={`library-track${selectedTrack === track.id ? " selected" : ""}`}
                   key={track.id}
@@ -652,7 +698,10 @@ export default function Deck() {
                   <span>{formatTime(track.durationMs)}</span>
                 </button>
               ))}
-              {pool.length === 0 && (
+              {librarySource === "all" && search.trim().length < 2 && <p className="empty-copy">Enter at least two characters to search every song in Navidrome.</p>}
+              {libraryLoading && <p className="empty-copy">Searching the library…</p>}
+              {libraryError && <p className="library-error" role="alert">{libraryError}</p>}
+              {!libraryLoading && !libraryError && (librarySource === "pool" ? pool.length === 0 : search.trim().length >= 2 && libraryResults.length === 0) && (
                 <p className="empty-copy">No records match that search.</p>
               )}
             </div>
@@ -664,7 +713,7 @@ export default function Deck() {
             <div className="library-footer">
               <span>
                 {selectedTrack
-                  ? state?.pool.find((track) => track.id === selectedTrack)
+                  ? (librarySource === "pool" ? pool : libraryResults).find((track) => track.id === selectedTrack)
                       ?.title
                   : "SELECT A RECORD"}
               </span>
@@ -675,8 +724,8 @@ export default function Deck() {
                       onClick={() => {
                         if (selectedTrack)
                           void command(
-                            "queue",
-                            { trackId: selectedTrack, source: "operator" },
+                            librarySource === "all" ? "request" : "queue",
+                            librarySource === "all" ? { trackId: selectedTrack, position: "queue" } : { trackId: selectedTrack, source: "operator" },
                             "Track added to queue",
                           ).then((ok) => {
                             if (ok) setShowLibrary(false);
@@ -691,8 +740,8 @@ export default function Deck() {
                       onClick={() => {
                         if (selectedTrack)
                           void command(
-                            "force-next",
-                            { trackId: selectedTrack },
+                            librarySource === "all" ? "request" : "force-next",
+                            librarySource === "all" ? { trackId: selectedTrack, position: "next" } : { trackId: selectedTrack },
                             "Track set to play next",
                           ).then((ok) => {
                             if (ok) setShowLibrary(false);

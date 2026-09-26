@@ -99,7 +99,7 @@ function executeTool(call: FunctionCall, state: EventState, nowMs: number): { ou
     const eligibleIds = new Set(eligibleCandidates(state, nowMs).map((track) => track.id));
     return { output: (args.trackIds as string[]).slice(0, 8).map((id) => {
       const track = state.pool.find((item) => item.id === id);
-      return track ? { ...metadata(track), eligible: eligibleIds.has(id) } : { id, eligible: false, error: "outside-event-pool" };
+      return track && !track.requestOnly ? { ...metadata(track), eligible: eligibleIds.has(id) } : { id, eligible: false, error: "outside-event-pool" };
     }) };
   }
   if (call.name === "read_history") {

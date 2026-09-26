@@ -10,6 +10,8 @@ import { atomicWrite } from "./prepare.ts";
 import { syncOnce } from "./sync.ts";
 import { control, recoverOnStartup } from "./control.ts";
 import { applySelectionIfCurrent, selectTrack, type SelectorConfig } from "./selection.ts";
+import { fetchNavidromeRequestTrack, searchNavidromeSongs, type NavidromeConfig } from "./navidrome.ts";
+import { generateDjScript, renderDjSpeech, type SpeechConfig } from "./speech.ts";
 
 type Body = Record<string, unknown>;
 
@@ -62,9 +64,11 @@ async function publish(stateDirectory: string, state: EventState): Promise<void>
   const paths = buildSchedule(state, Date.now());
   await atomicWrite(resolve(stateDirectory, "planned-end.txt"), `${state.plannedEndMs / 1000}\n`);
   await atomicWrite(resolve(stateDirectory, "schedule.m3u"), paths.join("\n") + (paths.length ? "\n" : ""));
+  await atomicWrite(resolve(stateDirectory, "speech-muted.txt"), state.speechMuted ? "1\n" : "0\n");
 }
 
-export function createControllerServer(stateDirectory: string, password: string, selectorConfig?: SelectorConfig) {
+export function createControllerServer(stateDirectory: string, password: string, selectorConfig?: SelectorConfig,
+  library?: { config: NavidromeConfig; musicDirectory: string }, speechConfig?: SpeechConfig) {
   if (!password) throw new Error("OPERATOR_PASSWORD is required");
   let tail: Promise<void> = Promise.resolve();
   const serial = <T>(operation: () => Promise<T>): Promise<T> => {
@@ -90,6 +94,41 @@ export function createControllerServer(stateDirectory: string, password: string,
   let selecting = false;
   let nextSelectionMs = 0;
   let retryMs = 5_000;
+  let speaking = false;
+  let lastSpeechMs = 0;
+  let lastSpeechTrackId = "";
+  let nextSpeechAttemptMs = 0;
+  const speak = async (manual: boolean): Promise<void> => {
+    if (!speechConfig) throw new Error("OpenAI and ElevenLabs API keys are required for speech");
+    if (speaking) throw new Error("Speech is already being prepared");
+    speaking = true;
+    try {
+      const state = await serial(() => loadState(stateDirectory));
+      if (state.status !== "running" || state.speechMuted || !state.current) throw new Error("Speech needs a playing, unmuted event");
+      const script = await generateDjScript(state, speechConfig);
+      const latest = await serial(() => loadState(stateDirectory));
+      if (latest.status !== "running" || latest.speechMuted) return;
+      await renderDjSpeech(script, stateDirectory, speechConfig);
+      lastSpeechMs = Date.now();
+      lastSpeechTrackId = state.current.trackId;
+      nextSpeechAttemptMs = lastSpeechMs + 10 * 60_000;
+    } catch (error) {
+      if (!manual) {
+        nextSpeechAttemptMs = Date.now() + 60_000;
+        console.error("DJ speech failed:", error instanceof Error ? error.message : "Unknown error");
+      }
+      throw error;
+    } finally { speaking = false; }
+  };
+  const speechTimer = setInterval(() => {
+    if (closed || !speechConfig || speaking || Date.now() < nextSpeechAttemptMs) return;
+    void serial(() => loadState(stateDirectory)).then((state) => {
+      if (state.status !== "running" || state.speechMuted || !state.current) return;
+      if (state.current.trackId === lastSpeechTrackId || Date.now() - state.current.startedAtMs < 20_000 ||
+          Date.now() - lastSpeechMs < 10 * 60_000) return;
+      void speak(false).catch(() => {});
+    }).catch(() => {});
+  }, 5_000);
   const noteWarning = async (warning: string): Promise<void> => {
     if (closed) return;
     await serial(async () => {
@@ -135,8 +174,50 @@ export function createControllerServer(stateDirectory: string, password: string,
   };
   const server = createServer((request, response) => {
     if (!authenticated(request, password)) { send(response, 401, { error: "Unauthorized" }); return; }
+    const url = new URL(request.url ?? "/", "http://localhost");
+    const path = url.pathname;
+    if (request.method === "GET" && path === "/library-search") {
+      if (!library) { send(response, 503, { error: "Navidrome is not configured" }); return; }
+      void searchNavidromeSongs(library.config, url.searchParams.get("q") ?? "")
+        .then((songs) => send(response, 200, { songs }))
+        .catch((error: unknown) => send(response, error instanceof Error && error.message.startsWith("Search must") ? 400 : 502,
+          { error: error instanceof Error ? error.message : "Library search failed" }));
+      return;
+    }
+    if (request.method === "POST" && path === "/request") {
+      if (!library) { send(response, 503, { error: "Navidrome is not configured" }); return; }
+      void (async () => {
+        const body = await readBody(request);
+        const trackId = requiredString(body, "trackId");
+        const position = body.position === undefined ? "queue" : body.position;
+        if (position !== "queue" && position !== "next") throw new Error("position must be queue or next");
+        const snapshot = await serial(() => loadState(stateDirectory));
+        if (snapshot.status === "stopped") throw new Error("Event is stopped");
+        const found = snapshot.pool.find((track) => track.id === trackId);
+        const downloaded = found ? null : await fetchNavidromeRequestTrack(library.config, trackId, library.musicDirectory);
+        return serial(async () => {
+          const state = await loadState(stateDirectory);
+          const current = state.pool.some((track) => track.id === trackId) ? state : { ...state, pool: [...state.pool, downloaded!] };
+          const updated = position === "next"
+            ? forceNext(current, trackId, Date.now())
+            : addSelection(current, trackId, "operator", Date.now(), "Listener request");
+          await atomicWrite(resolve(stateDirectory, "event.json"), JSON.stringify(updated, null, 2) + "\n");
+          await publish(stateDirectory, updated);
+          return updated;
+        });
+      })().then((updated) => send(response, 200, updated)).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : "Request failed";
+        send(response, /^(Track is ineligible|Invalid|Event is stopped|position must|trackId must|Request body)/.test(message) ? 400 : 502,
+          { error: message });
+      });
+      return;
+    }
+    if (request.method === "POST" && path === "/announce") {
+      void speak(true).then(() => send(response, 200, { ok: true }))
+        .catch((error: unknown) => send(response, 400, { error: error instanceof Error ? error.message : "Speech failed" }));
+      return;
+    }
     void serial(async () => {
-      const path = new URL(request.url ?? "/", "http://localhost").pathname;
       if (request.method === "GET" && path === "/state") { send(response, 200, await loadState(stateDirectory)); return; }
       if (request.method !== "POST") { send(response, 404, { error: "Unknown endpoint" }); return; }
       const body = await readBody(request);
@@ -188,7 +269,7 @@ export function createControllerServer(stateDirectory: string, password: string,
       send(response, error instanceof SyntaxError || message.startsWith("Track is ineligible") || message.startsWith("Invalid") || message.startsWith("Cannot skip") || message.startsWith("Only a") || message.startsWith("Planned end") || message.startsWith("allowRepeats") || message.includes("must be") || message.includes("committed") ? 400 : 500, { error: message });
     });
   });
-  server.on("close", () => { closed = true; clearInterval(timer); if (selectorTimer) clearInterval(selectorTimer); });
+  server.on("close", () => { closed = true; clearInterval(timer); clearInterval(speechTimer); if (selectorTimer) clearInterval(selectorTimer); });
   const ready = serial(async () => {
     await recoverOnStartup(stateDirectory);
     await syncOnce(stateDirectory);
@@ -210,8 +291,14 @@ if (process.argv[1]?.endsWith("/controller/serve.ts")) {
     process.exitCode = 1;
   } else {
     const apiKey = process.env.OPENAI_API_KEY;
+    const library = process.env.NAVIDROME_URL && process.env.NAVIDROME_USER && process.env.NAVIDROME_PASSWORD
+      ? { config: { endpoint: process.env.NAVIDROME_URL, username: process.env.NAVIDROME_USER, password: process.env.NAVIDROME_PASSWORD },
+          musicDirectory: process.env.MUSIC_DIR || "/music" } : undefined;
+    const speech = apiKey && process.env.ELEVENLABS_API_KEY
+      ? { openaiKey: apiKey, elevenlabsKey: process.env.ELEVENLABS_API_KEY,
+          voiceId: process.env.ELEVENLABS_VOICE_ID || "xB7ZTAdAjd7cI20IXiAL", model: process.env.OPENAI_MODEL || "gpt-6-luna" } : undefined;
     const { server, ready } = createControllerServer(stateDirectory, password,
-      apiKey ? { apiKey, model: process.env.OPENAI_MODEL || "gpt-6-luna" } : undefined);
+      apiKey ? { apiKey, model: process.env.OPENAI_MODEL || "gpt-6-luna" } : undefined, library, speech);
     ready.then(() => server.listen(Number(process.env.CONTROLLER_PORT ?? 8787), "0.0.0.0"))
       .catch((error: unknown) => { console.error(error); process.exitCode = 1; });
   }

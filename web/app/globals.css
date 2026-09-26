@@ -847,6 +847,21 @@ input:focus-visible {
   width: calc(100% - 52px);
   margin: 0 26px 18px;
 }
+.library-tabs {
+  display: flex;
+  gap: 8px;
+  padding: 0 26px 16px;
+}
+.library-tabs button {
+  padding: 9px 13px;
+  border: 1px solid var(--ink);
+  background: transparent;
+  color: var(--ink);
+  font: 700 11px/1 "Space Mono", monospace;
+  letter-spacing: .08em;
+  cursor: pointer;
+}
+.library-tabs button.active { background: var(--ink); color: var(--paper); }
 .library-list {
   overflow: auto;
   min-height: 150px;

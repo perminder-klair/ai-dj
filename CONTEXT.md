@@ -17,6 +17,9 @@ Spoken audio from the AI DJ between tracks.
 The approved collection of tracks the DJ may select for an event.
 _Avoid_: Queue, playlist when referring to selection eligibility rather than playback order
 
+**Request-only track**:
+A song found outside the event pool in the full library and queued by an operator. The autonomous DJ and fallback do not select it.
+
 **Operator**:
 The person supervising the event who can override track selection and playback, and mute DJ speech.
 

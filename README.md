@@ -1,12 +1,12 @@
 # AI DJ
 
-An autonomous music selector and occasional spoken host for a nightclub event, using Navidrome, GPT-6-Luna, Kokoro, Next.js, Liquidsoap, and Icecast. The controller, autonomous selection, venue audio pipeline, and operator deck are runnable today; speech is still to come.
+An autonomous music selector and occasional spoken host for a nightclub event, using Navidrome, GPT-6-Luna, ElevenLabs, Next.js, Liquidsoap, and Icecast.
 
-Preparation freezes a Navidrome playlist into a local event pool. The controller checks pool membership, repeats, and a 30-minute artist gap before publishing a queue. Liquidsoap plays approved local files through Icecast, reports actual starts, and continues through its loaded fallback queue if the controller disconnects. Preparation requires five hours of unique, playable audio after crossfade overlap.
+Preparation freezes a Navidrome playlist into a local event pool. The controller checks pool membership, repeats, and a 30-minute artist gap before publishing a queue. Operators can also search the whole Navidrome library and queue a validated request outside the playlist; the autonomous selector never chooses these request-only tracks. Liquidsoap plays local files through Icecast, reports actual starts, and continues through its loaded fallback queue if the controller disconnects. Preparation requires coverage for the event plus 15 minutes, capped at five hours.
 
 ## Prepare an event
 
-Requires Node 26, pnpm, `ffprobe`, Docker Compose, and enough approved music for five hours. Create `event-settings.json`:
+Requires Node 26, pnpm, `ffprobe`, Docker Compose, and enough approved music for the planned duration plus 15 minutes (up to five hours). Create `event-settings.json`:
 
 ```json
 {
@@ -30,13 +30,13 @@ pnpm prepare ./event-manifest.json /absolute/path/to/music /absolute/path/to/new
 cp .env.example .env
 ```
 
-Use a new state directory for each event. Set `MUSIC_DIR`, `STATE_DIR`, three distinct passwords, and `VENUE_UID`/`VENUE_GID` in `.env`. On Linux, `id -u` and `id -g` provide the IDs; both services need write access to the state directory. Set `OPENAI_API_KEY` to enable autonomous selection, or leave it blank for music-only local fallback. The default model is `gpt-6-luna`. Set `ICECAST_PORT` and `CONTROLLER_PORT` if the defaults conflict.
+Use a new state directory for each event. Set `MUSIC_DIR`, `STATE_DIR`, three distinct passwords, `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, and `VENUE_UID`/`VENUE_GID` in `.env`. On Linux, `id -u` and `id -g` provide the IDs; both services need write access to the state directory, and the controller needs write access to the music directory for requests. Set `OPENAI_API_KEY` to enable GPT-6-Luna track selection and DJ scripts. Set `ELEVENLABS_API_KEY` to render the scripts with voice `xB7ZTAdAjd7cI20IXiAL`. With either key absent, speech stays off. Set `ICECAST_PORT` and `CONTROLLER_PORT` if the defaults conflict.
 
 ```sh
 docker compose up -d --build
 ```
 
-Open the operator deck at `http://<venue-machine>:3000` and sign in with `OPERATOR_PASSWORD`. It shows the current record, progress, queue, recent plays, and controller warnings. Operators can start, resume, stop, skip, mute speech, steer the selector, and choose an approved track to queue or play next. The web service keeps the password in an HTTP-only session cookie and sends commands to the controller from the server. Set `WEB_PORT` if port 3000 conflicts; restrict access to the venue network or a trusted VPN.
+Open the operator deck at `http://<venue-machine>:3000` and sign in with `OPERATOR_PASSWORD`. It shows the current record, progress, queue, recent plays, and controller warnings. Operators can start, resume, stop, skip, mute speech, steer the selector, and browse the event pool or search the entire Navidrome library for a request. A whole-library song is downloaded and checked before it enters the queue; repeats and artist spacing still apply. The web service keeps the password in an HTTP-only session cookie and sends commands to the controller from the server. Set `WEB_PORT` if port 3000 conflicts; restrict access to the venue network or a trusted VPN.
 
 Press **Listen** beside the transport controls to monitor the Icecast stream in that browser. Browser playback starts only after the button is pressed; the operator deck does not automatically play audio. The venue player remains the main sound output. For an interface-only preview without a prepared event, set `DEMO_AUDIO=1` when starting the web service to play the original bundled 16-second loop instead of Icecast. The loop can be regenerated with `python web/scripts/generate-demo-loop.py` and `ffmpeg`.
 
@@ -65,7 +65,7 @@ On a mixer restart, played paths are filtered from the schedule and playback con
 
 Run `pnpm test`, `pnpm typecheck`, `npm --prefix web run typecheck`, `npm --prefix web run build`, and `docker compose config --quiet` after changes. Liquidsoap can be checked with `docker run --rm -v "$PWD/audio/radio.liq:/radio.liq:ro" savonet/liquidsoap:v2.4.5 --check /radio.liq`.
 
-Remaining v1 work: Kokoro speech and ducking, and a full venue rehearsal with real audio. The Navidrome importer and OpenAI integration have mock-backed tests but have not yet been run against this venue's services or an API key. Command-to-speaker latency and fade quality still need measurement on the venue system.
+DJ speech is generated after playback starts and roughly every ten minutes, with a **Speak** control for a manual line. Liquidsoap overlays the voice and reduces music volume while it plays. A full venue rehearsal is still needed to measure timing and mix levels.
 
 - [Agreed design and acceptance checks](docs/design-interview.md)
 - [Domain glossary](CONTEXT.md)

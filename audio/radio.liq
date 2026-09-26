@@ -98,6 +98,28 @@ music.on_metadata(synchronous=false, fun (m) ->
   )
   end
 )
+speech_queue = request.queue(id="speech_queue", interactive=false, prefetch=1)
+loaded_speech = ref(if file.exists("#{state_dir}/speech-next.txt") then file.contents("#{state_dir}/speech-next.txt") else "" end)
+def speech_allowed() =
+  can_run() and file.exists("#{state_dir}/speech-muted.txt") and
+  file.contents("#{state_dir}/speech-muted.txt") == "0\n"
+end
+def load_speech() =
+  speech_file = "#{state_dir}/speech-next.txt"
+  if file.exists(speech_file) then
+    contents = file.contents(speech_file)
+    if contents != loaded_speech() then
+      loaded_speech := contents
+      if speech_allowed() then
+        speech_queue.push(request.create(string.trim(contents)))
+      end
+    end
+  end
+end
+thread.run(every=0.5, load_speech)
+speech = switch(track_sensitive=false, [({speech_allowed()}, speech_queue)])
+music = amplify(fun () -> if speech.is_ready() then 0.28 else 1.0 end, music)
+music = add(normalize=false, [music, speech])
 output.icecast(
   %mp3(bitrate=192, samplerate=44100, stereo=true),
   fallible=true,

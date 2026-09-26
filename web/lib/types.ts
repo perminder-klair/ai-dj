@@ -7,6 +7,7 @@ export interface Track {
   album?: string;
   genre?: string;
   year?: number;
+  requestOnly?: boolean;
 }
 
 export interface QueueEntry {

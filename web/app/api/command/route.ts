@@ -14,6 +14,8 @@ const COMMANDS = new Set([
   "replace",
   "reorder",
   "extend",
+  "request",
+  "announce",
 ]);
 
 export async function POST(request: NextRequest) {

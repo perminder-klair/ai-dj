@@ -19,11 +19,18 @@ services:
       OPERATOR_PASSWORD: ${OPERATOR_PASSWORD:?Set OPERATOR_PASSWORD}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENAI_MODEL: ${OPENAI_MODEL:-gpt-6-luna}
+      ELEVENLABS_API_KEY: ${ELEVENLABS_API_KEY:-}
+      ELEVENLABS_VOICE_ID: ${ELEVENLABS_VOICE_ID:-xB7ZTAdAjd7cI20IXiAL}
+      NAVIDROME_URL: ${NAVIDROME_URL:-}
+      NAVIDROME_USER: ${NAVIDROME_USER:-}
+      NAVIDROME_PASSWORD: ${NAVIDROME_PASSWORD:-}
+      MUSIC_DIR: /music
     ports:
       - "127.0.0.1:${CONTROLLER_PORT:-8787}:8787"
     volumes:
       - ./controller:/app/controller:ro
       - ${STATE_DIR:?Set STATE_DIR}:/state
+      - ${MUSIC_DIR:?Set MUSIC_DIR}:/music
     command: ["node", "/app/controller/serve.ts", "/state"]
   icecast:
     build: ./audio/icecast

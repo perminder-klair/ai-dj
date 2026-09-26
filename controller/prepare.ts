@@ -31,7 +31,7 @@ function nonempty(value: unknown, label: string): asserts value is string {
 
 const execFileAsync = promisify(execFile);
 
-async function probeDuration(path: string): Promise<number> {
+export async function probeDuration(path: string): Promise<number> {
   const { stdout } = await execFileAsync("ffprobe", ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path]);
   const durationMs = Math.round(Number(stdout.trim()) * 1000);
   if (!Number.isFinite(durationMs) || durationMs <= 5_000) throw new Error(`Cannot determine audio duration: ${path}`);
@@ -78,7 +78,7 @@ export async function prepare(
   for (const track of pool) {
     if (/[\r\n]/.test(track.localPath)) throw new Error(`Unsupported newline in filename: ${track.id}`);
   }
-  const fallback = prepareFallback(pool, startMs);
+  const fallback = prepareFallback(pool, startMs, Math.min(5 * 3_600_000, (plannedEndMs - startMs) + 15 * 60_000));
   const state: EventState = {
     id: manifest.id, status: "prepared", plannedEndMs, eventBrief: manifest.eventBrief,
     steering: [], speechMuted: false, pool, fallbackOrder: fallback.order,
