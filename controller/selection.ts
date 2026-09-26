@@ -146,7 +146,12 @@ export async function selectTrack(state: EventState, config: SelectorConfig, now
           input, tools, tool_choice: "required", parallel_tool_calls: false, max_output_tokens: 1_000,
         }),
       });
-      if (!response.ok) throw new Error(`OpenAI request failed: HTTP ${response.status}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({})) as { error?: { code?: string } };
+        throw new Error(body.error?.code === "credit_balance_exhausted"
+          ? "OpenAI credit balance exhausted"
+          : `OpenAI request failed: HTTP ${response.status}`);
+      }
       const payload = await response.json() as ModelResponse;
       if (payload.status !== "completed" || !Array.isArray(payload.output)) throw new Error(`OpenAI response status: ${payload.status ?? "invalid"}`);
       const functionCalls = payload.output.filter((item): item is FunctionCall => item.type === "function_call" &&

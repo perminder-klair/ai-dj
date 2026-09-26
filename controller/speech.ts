@@ -28,7 +28,12 @@ export async function generateDjScript(state: EventState, config: SpeechConfig):
       instructions: "You are Marlowe, a warm, sharp nightclub radio DJ. Write one natural spoken line of 15–35 words. Keep it upbeat and specific to the supplied music. No invented facts, listener names, emojis, stage directions, or quoted lyrics. Output only the line to speak.",
       input: `Event: ${state.eventBrief}\nPlaying: ${current ? `${current.title} by ${current.artist}` : "opening the set"}\nUp next: ${next ? `${next.title} by ${next.artist}` : "not yet selected"}\nOperator direction: ${state.steering.at(-1) ?? "none"}` }),
   });
-  if (!response.ok) throw new Error(`DJ script generation failed: HTTP ${response.status}`);
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code === "credit_balance_exhausted"
+      ? "OpenAI credit balance exhausted; add API credits to enable DJ speech"
+      : `DJ script generation failed: HTTP ${response.status}`);
+  }
   const text = outputText(await response.json());
   if (!text || text.length > 500) throw new Error("DJ script generation returned no usable text");
   return text;

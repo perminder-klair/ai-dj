@@ -165,7 +165,10 @@ export function createControllerServer(stateDirectory: string, password: string,
       nextSelectionMs = Date.now() + 1_000;
     } catch (error) {
       console.error("Autonomous selection failed:", error instanceof Error ? error.message : "Unknown error");
-      await noteWarning("AI selection unavailable; local fallback remains active").catch((warningError: unknown) => console.error(warningError));
+      await noteWarning(error instanceof Error && error.message.includes("credit balance exhausted")
+        ? "OpenAI credit balance exhausted; local fallback remains active"
+        : "AI selection unavailable; local fallback remains active")
+        .catch((warningError: unknown) => console.error(warningError));
       nextSelectionMs = Date.now() + retryMs;
       retryMs = Math.min(60_000, retryMs * 2);
     } finally {
