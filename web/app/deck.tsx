@@ -342,7 +342,7 @@ export default function Deck() {
                   onClick={() => {
                     if (
                       window.confirm(
-                        "Stop the event? This ends playback and cannot be resumed.",
+                        "Stop playback? You can press Start to begin a fresh set.",
                       )
                     )
                       void command("stop", {}, "Event stopped");
@@ -364,7 +364,7 @@ export default function Deck() {
                         : "Playback started",
                     )
                   }
-                  disabled={!canControl || status === "stopped"}
+                  disabled={!canControl}
                 >
                   <span className="control-symbol">▶</span>
                   <span>{status === "paused" ? "RESUME" : "START"}</span>

@@ -2,6 +2,7 @@ import { readFile, unlink, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { atomicWrite } from "./prepare.ts";
+import { buildSchedule } from "./event.ts";
 import type { EventState } from "./event.ts";
 
 async function removeIfPresent(path: string): Promise<void> {
@@ -72,10 +73,23 @@ export async function control(stateDirectory: string, command: "start" | "resume
   const flagPath = resolve(stateDirectory, "run.flag");
   const state = JSON.parse(await readFile(statePath, "utf8")) as EventState;
   if (command === "start" || command === "resume") {
-    if (state.status !== (command === "start" ? "prepared" : "paused")) throw new Error(`Only a ${command === "start" ? "prepared" : "paused"} event may ${command}`);
-    if (Date.now() >= state.plannedEndMs) throw new Error("Planned end has passed; extend before starting");
+    if (command === "start" && state.status !== "prepared" && state.status !== "stopped") throw new Error("Only a prepared or stopped event may start");
+    if (command === "resume" && state.status !== "paused") throw new Error("Only a paused event may resume");
+    let next = state;
+    if (state.status === "stopped") {
+      const duration = state.sessionDurationMs && state.sessionDurationMs > 0 ? state.sessionDurationMs : 40 * 60_000;
+      next = { ...state, status: "prepared", sessionDurationMs: duration, plannedEndMs: Date.now() + duration,
+        pool: state.pool.filter((track) => !track.requestOnly), history: [], current: null, upcoming: [], warnings: [], steering: [] };
+      for (const name of ["played.txt", "now-playing.json", "committed.json", "skip.request", "stop.request", "speech-next.txt"]) {
+        await removeIfPresent(resolve(stateDirectory, name));
+      }
+      await atomicWrite(resolve(stateDirectory, "planned-end.txt"), `${next.plannedEndMs / 1000}\n`);
+      const paths = buildSchedule(next, Date.now());
+      await atomicWrite(resolve(stateDirectory, "schedule.m3u"), paths.join("\n") + (paths.length ? "\n" : ""));
+    }
+    if (Date.now() >= next.plannedEndMs) throw new Error("Planned end has passed; extend before starting");
     await writeFile(flagPath, `${await bootId()}\n`, { flag: "wx" });
-    await saveState(stateDirectory, { ...state, status: "running" });
+    await saveState(stateDirectory, { ...next, status: "running" });
   } else {
     if (state.status === "stopped") return;
     await atomicWrite(resolve(stateDirectory, "stop.request"), `${Date.now()}\n`);

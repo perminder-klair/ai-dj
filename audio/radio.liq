@@ -29,6 +29,9 @@ end
 def check_commands() =
   stop_file = "#{state_dir}/stop.request"
   skip_file = "#{state_dir}/skip.request"
+  if fade_mode() == "stop_out" and not file.exists(stop_file) then
+    fade_mode := "none"
+  end
   if file.exists(stop_file) and file.contents(stop_file) != loaded_stop() then
     loaded_stop := file.contents(stop_file)
     fade_started := time()
@@ -53,7 +56,10 @@ thread.run(every=0.1, check_commands)
 
 def load_schedule() =
   schedule_file = "#{state_dir}/schedule.m3u"
-  if can_run() and file.exists(schedule_file) then
+  if not can_run() then
+    music_queue.set_queue([])
+    loaded_schedule := ""
+  else if file.exists(schedule_file) then
     if time() >= planned_end() then
       music_queue.set_queue([])
       loaded_schedule := ""
@@ -67,7 +73,7 @@ def load_schedule() =
         log("Loaded #{list.length(uris)} remaining tracks")
       end
     end
-  end
+  end end
 end
 thread.run(every=0.5, load_schedule)
 

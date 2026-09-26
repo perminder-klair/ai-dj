@@ -80,7 +80,7 @@ export async function prepare(
   }
   const fallback = prepareFallback(pool, startMs, Math.min(5 * 3_600_000, (plannedEndMs - startMs) + 15 * 60_000));
   const state: EventState = {
-    id: manifest.id, status: "prepared", plannedEndMs, eventBrief: manifest.eventBrief,
+    id: manifest.id, status: "prepared", plannedEndMs, sessionDurationMs: plannedEndMs - startMs, eventBrief: manifest.eventBrief,
     steering: [], speechMuted: false, pool, fallbackOrder: fallback.order,
     history: [], current: null, upcoming: [], warnings: [],
   };

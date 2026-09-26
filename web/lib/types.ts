@@ -22,6 +22,7 @@ export interface EventState {
   id: string;
   status: "prepared" | "running" | "paused" | "stopped";
   plannedEndMs: number;
+  sessionDurationMs?: number;
   eventBrief: string;
   steering: string[];
   speechMuted: boolean;
