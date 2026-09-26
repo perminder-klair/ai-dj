@@ -1,6 +1,6 @@
 # AI DJ
 
-An autonomous music selector and occasional spoken host for a nightclub event, using Navidrome, GPT-6-Luna, ElevenLabs, Next.js, Liquidsoap, and Icecast.
+An autonomous music selector and occasional spoken host for a nightclub event, using Navidrome, GPT-6-Luna through OpenRouter, ElevenLabs, Next.js, Liquidsoap, and Icecast.
 
 Preparation freezes a Navidrome playlist into a local event pool. The controller checks pool membership, repeats, and a 30-minute artist gap before publishing a queue. Operators can also search the whole Navidrome library and queue a validated request outside the playlist; the autonomous selector never chooses these request-only tracks. Liquidsoap plays local files through Icecast, reports actual starts, and continues through its loaded fallback queue if the controller disconnects. Preparation requires coverage for the event plus 15 minutes, capped at five hours.
 
@@ -30,7 +30,7 @@ pnpm prepare ./event-manifest.json /absolute/path/to/music /absolute/path/to/new
 cp .env.example .env
 ```
 
-Use a new state directory for each event. Set `MUSIC_DIR`, `STATE_DIR`, three distinct passwords, `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, and `VENUE_UID`/`VENUE_GID` in `.env`. On Linux, `id -u` and `id -g` provide the IDs; both services need write access to the state directory, and the controller needs write access to the music directory for requests. Set `OPENAI_API_KEY` to enable GPT-6-Luna track selection and DJ scripts. Set `ELEVENLABS_API_KEY` to render the scripts with voice `xB7ZTAdAjd7cI20IXiAL`. With either key absent, speech stays off. Set `ICECAST_PORT` and `CONTROLLER_PORT` if the defaults conflict.
+Use a new state directory for each event. Set `MUSIC_DIR`, `STATE_DIR`, three distinct passwords, `NAVIDROME_URL`, `NAVIDROME_USER`, `NAVIDROME_PASSWORD`, and `VENUE_UID`/`VENUE_GID` in `.env`. On Linux, `id -u` and `id -g` provide the IDs; both services need write access to the state directory, and the controller needs write access to the music directory for requests. Set `OPENROUTER_API_KEY` to enable GPT-6-Luna track selection and DJ scripts through OpenRouter; `OPENROUTER_MODEL` defaults to `openai/gpt-6-luna`. Set `ELEVENLABS_API_KEY` to render the scripts with voice `xB7ZTAdAjd7cI20IXiAL`. With either key absent, speech stays off. Set `ICECAST_PORT` and `CONTROLLER_PORT` if the defaults conflict.
 
 ```sh
 docker compose up -d --build

@@ -125,7 +125,7 @@ function executeTool(call: FunctionCall, state: EventState, nowMs: number): { ou
 
 /** One stateless Responses function-calling turn, bounded by time and tool count. */
 export async function selectTrack(state: EventState, config: SelectorConfig, nowMs = Date.now()): Promise<SelectionChoice> {
-  if (!config.apiKey) throw new Error("OPENAI_API_KEY is required for autonomous selection");
+  if (!config.apiKey) throw new Error("OPENROUTER_API_KEY is required for autonomous selection");
   if (!eligibleCandidates(state, nowMs).length) throw new Error("No eligible track before the planned end");
   const abort = new AbortController();
   const timeout = setTimeout(() => abort.abort(), config.timeoutMs ?? 30_000);
@@ -137,11 +137,11 @@ export async function selectTrack(state: EventState, config: SelectorConfig, now
   }) }];
   try {
     for (let calls = 0; calls < 6; calls++) {
-      const response = await (config.fetcher ?? fetch)(config.endpoint ?? "https://api.openai.com/v1/responses", {
+      const response = await (config.fetcher ?? fetch)(config.endpoint ?? "https://openrouter.ai/api/v1/responses", {
         method: "POST", signal: abort.signal,
         headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
         body: JSON.stringify({
-          model: config.model ?? "gpt-6-luna", store: false, reasoning: { effort: "none" },
+          model: config.model ?? "openai/gpt-6-luna", store: false, reasoning: { effort: "none" },
           instructions: "You select music for one venue event. Use only the supplied frozen pool and actual metadata. Search the pool, inspect candidates, and read history as useful. Respect the event brief, live steering, no-repeat rule, and artist spacing. Never invent BPM, key, mood, or energy if absent. Submit one track with a concise, concrete reason. The controller validates your choice.",
           input, tools, tool_choice: "required", parallel_tool_calls: false, max_output_tokens: 1_000,
         }),
@@ -149,11 +149,11 @@ export async function selectTrack(state: EventState, config: SelectorConfig, now
       if (!response.ok) {
         const body = await response.json().catch(() => ({})) as { error?: { code?: string } };
         throw new Error(body.error?.code === "credit_balance_exhausted"
-          ? "OpenAI credit balance exhausted"
-          : `OpenAI request failed: HTTP ${response.status}`);
+          ? "OpenRouter credit balance exhausted"
+          : `OpenRouter request failed: HTTP ${response.status}`);
       }
       const payload = await response.json() as ModelResponse;
-      if (payload.status !== "completed" || !Array.isArray(payload.output)) throw new Error(`OpenAI response status: ${payload.status ?? "invalid"}`);
+      if (payload.status !== "completed" || !Array.isArray(payload.output)) throw new Error(`OpenRouter response status: ${payload.status ?? "invalid"}`);
       const functionCalls = payload.output.filter((item): item is FunctionCall => item.type === "function_call" &&
         typeof item.call_id === "string" && typeof item.name === "string" && typeof item.arguments === "string");
       if (functionCalls.length !== 1) throw new Error("Model did not make exactly one function call");

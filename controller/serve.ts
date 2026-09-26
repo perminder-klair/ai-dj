@@ -99,7 +99,7 @@ export function createControllerServer(stateDirectory: string, password: string,
   let lastSpeechTrackId = "";
   let nextSpeechAttemptMs = 0;
   const speak = async (manual: boolean): Promise<void> => {
-    if (!speechConfig) throw new Error("OpenAI and ElevenLabs API keys are required for speech");
+    if (!speechConfig) throw new Error("OpenRouter and ElevenLabs API keys are required for speech");
     if (speaking) throw new Error("Speech is already being prepared");
     speaking = true;
     try {
@@ -158,6 +158,9 @@ export function createControllerServer(stateDirectory: string, password: string,
         const current = await loadState(stateDirectory);
         const updated = applySelectionIfCurrent(snapshot, current, choice, Date.now());
         if (!updated) return;
+        updated.warnings = updated.warnings.filter((warning) =>
+          warning !== "AI selection unavailable; local fallback remains active" &&
+          warning !== "OpenRouter credit balance exhausted; local fallback remains active");
         await atomicWrite(resolve(stateDirectory, "event.json"), JSON.stringify(updated, null, 2) + "\n");
         await publish(stateDirectory, updated);
       });
@@ -166,7 +169,7 @@ export function createControllerServer(stateDirectory: string, password: string,
     } catch (error) {
       console.error("Autonomous selection failed:", error instanceof Error ? error.message : "Unknown error");
       await noteWarning(error instanceof Error && error.message.includes("credit balance exhausted")
-        ? "OpenAI credit balance exhausted; local fallback remains active"
+        ? "OpenRouter credit balance exhausted; local fallback remains active"
         : "AI selection unavailable; local fallback remains active")
         .catch((warningError: unknown) => console.error(warningError));
       nextSelectionMs = Date.now() + retryMs;
@@ -276,7 +279,13 @@ export function createControllerServer(stateDirectory: string, password: string,
   const ready = serial(async () => {
     await recoverOnStartup(stateDirectory);
     await syncOnce(stateDirectory);
-    await publish(stateDirectory, await loadState(stateDirectory));
+    const state = await loadState(stateDirectory);
+    const warnings = state.warnings.filter((warning) =>
+      !warning.startsWith("OpenAI credit balance exhausted") &&
+      warning !== "AI selection unavailable; local fallback remains active");
+    const cleaned = warnings.length === state.warnings.length ? state : { ...state, warnings };
+    if (cleaned !== state) await atomicWrite(resolve(stateDirectory, "event.json"), JSON.stringify(cleaned, null, 2) + "\n");
+    await publish(stateDirectory, cleaned);
   });
   if (selectorConfig?.apiKey) void ready.then(() => {
     if (closed) return;
@@ -293,15 +302,16 @@ if (process.argv[1]?.endsWith("/controller/serve.ts")) {
     console.error("Usage: OPERATOR_PASSWORD=... node controller/serve.ts <state-directory>");
     process.exitCode = 1;
   } else {
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    const model = process.env.OPENROUTER_MODEL || "openai/gpt-6-luna";
     const library = process.env.NAVIDROME_URL && process.env.NAVIDROME_USER && process.env.NAVIDROME_PASSWORD
       ? { config: { endpoint: process.env.NAVIDROME_URL, username: process.env.NAVIDROME_USER, password: process.env.NAVIDROME_PASSWORD },
           musicDirectory: process.env.MUSIC_DIR || "/music" } : undefined;
     const speech = apiKey && process.env.ELEVENLABS_API_KEY
-      ? { openaiKey: apiKey, elevenlabsKey: process.env.ELEVENLABS_API_KEY,
-          voiceId: process.env.ELEVENLABS_VOICE_ID || "xB7ZTAdAjd7cI20IXiAL", model: process.env.OPENAI_MODEL || "gpt-6-luna" } : undefined;
+      ? { openrouterKey: apiKey, elevenlabsKey: process.env.ELEVENLABS_API_KEY,
+          voiceId: process.env.ELEVENLABS_VOICE_ID || "xB7ZTAdAjd7cI20IXiAL", model } : undefined;
     const { server, ready } = createControllerServer(stateDirectory, password,
-      apiKey ? { apiKey, model: process.env.OPENAI_MODEL || "gpt-6-luna" } : undefined, library, speech);
+      apiKey ? { apiKey, model } : undefined, library, speech);
     ready.then(() => server.listen(Number(process.env.CONTROLLER_PORT ?? 8787), "0.0.0.0"))
       .catch((error: unknown) => { console.error(error); process.exitCode = 1; });
   }
