@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type FormEvent,
 } from "react";
@@ -70,6 +71,8 @@ export default function Deck() {
   const [showLibrary, setShowLibrary] = useState(false);
   const [replaceIndex, setReplaceIndex] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [listening, setListening] = useState(false);
+  const audioRef = useRef<HTMLAudioElement>(null);
 
   const loadState = useCallback(async () => {
     try {
@@ -166,6 +169,25 @@ export default function Deck() {
     }
   }
 
+  async function toggleAudio() {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!audio.paused) {
+      audio.pause();
+      setListening(false);
+      return;
+    }
+    try {
+      await audio.play();
+      setListening(true);
+      setActionError("");
+    } catch {
+      setActionError(
+        "Audio is unavailable. Check that the venue stream is running.",
+      );
+    }
+  }
+
   const current = state?.pool.find(
     (track) => track.id === state.current?.trackId,
   );
@@ -233,6 +255,18 @@ export default function Deck() {
 
   return (
     <main className="app-shell">
+      <audio
+        ref={audioRef}
+        src="/api/audio"
+        preload="none"
+        loop
+        onPause={() => setListening(false)}
+        onError={() =>
+          setActionError(
+            "Audio is unavailable. Check that the venue stream is running.",
+          )
+        }
+      />
       <header className="masthead">
         <div className="brand">
           SUB<span>/</span>WAVE
@@ -333,14 +367,24 @@ export default function Deck() {
                 <small>VOICE</small>
               </button>
             </div>
-            <div className="signal-block">
+            <button
+              className={`signal-block audio-monitor${listening ? " listening" : ""}`}
+              onClick={() => void toggleAudio()}
+              disabled={!state}
+              aria-label={
+                listening
+                  ? "Stop listening to the audio stream"
+                  : "Listen to the audio stream"
+              }
+              aria-pressed={listening}
+            >
               <div className="signal-bars" aria-hidden="true">
                 {[24, 38, 52, 70, 56, 84, 64, 44, 26].map((height, index) => (
                   <i key={index} style={{ height: `${height}%` }} />
                 ))}
               </div>
-              <span>SIGNAL {status === "running" ? "LIVE" : "IDLE"}</span>
-            </div>
+              <span>{listening ? "■ MONITOR ON" : "▶ LISTEN"}</span>
+            </button>
           </div>
         </section>
         <section className="content-panel" aria-label="Set details">

@@ -379,6 +379,23 @@ input:focus-visible {
   letter-spacing: 0.1em;
   white-space: nowrap;
 }
+.audio-monitor {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 600;
+}
+.audio-monitor:hover span,
+.audio-monitor.listening span {
+  color: var(--orange);
+}
+.audio-monitor.listening .signal-bars i {
+  animation: meter 0.7s ease-in-out infinite alternate;
+}
+.audio-monitor.listening .signal-bars i:nth-child(2n) {
+  animation-delay: -0.35s;
+}
 .signal-bars {
   width: 54px;
   height: 85px;
@@ -906,6 +923,12 @@ input:focus-visible {
     transform: rotate(360deg);
   }
 }
+@keyframes meter {
+  to {
+    transform: scaleY(0.65);
+    transform-origin: bottom;
+  }
+}
 @media (max-width: 980px) {
   .deck-grid {
     grid-template-columns: minmax(350px, 45%) minmax(0, 55%);
@@ -1083,6 +1106,9 @@ input:focus-visible {
 }
 @media (prefers-reduced-motion: reduce) {
   .playing .record {
+    animation: none;
+  }
+  .audio-monitor.listening .signal-bars i {
     animation: none;
   }
 }

@@ -37,7 +37,9 @@ docker compose up -d --build
 
 Open the operator deck at `http://<venue-machine>:3000` and sign in with `OPERATOR_PASSWORD`. It shows the current record, progress, queue, recent plays, and controller warnings. Operators can start, resume, stop, skip, mute speech, steer the selector, and choose an approved track to queue or play next. The web service keeps the password in an HTTP-only session cookie and sends commands to the controller from the server. Set `WEB_PORT` if port 3000 conflicts; restrict access to the venue network or a trusted VPN.
 
-To run the interface without Compose, start the controller and then run `cd web && npm ci && OPERATOR_PASSWORD=your-password CONTROLLER_URL=http://127.0.0.1:8787 npm run dev`. Open `http://localhost:3000`.
+Press **Listen** beside the transport controls to monitor the Icecast stream in that browser. Browser playback starts only after the button is pressed; the operator deck does not automatically play audio. The venue player remains the main sound output. For an interface-only preview without a prepared event, set `DEMO_AUDIO=1` when starting the web service to play the original bundled 16-second loop instead of Icecast. The loop can be regenerated with `python web/scripts/generate-demo-loop.py` and `ffmpeg`.
+
+To run the interface without Compose, start the controller and then run `cd web && npm ci && OPERATOR_PASSWORD=your-password CONTROLLER_URL=http://127.0.0.1:8787 STREAM_URL=http://127.0.0.1:8000/live.mp3 npm run dev`. Open `http://localhost:3000`.
 
 The controller listens on `127.0.0.1:8787` by default. Every request requires `Authorization: Bearer <OPERATOR_PASSWORD>`. For example, queue a track before starting, then inspect the state:
 
