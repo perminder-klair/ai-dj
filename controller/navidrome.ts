@@ -33,6 +33,21 @@ interface PlaylistResponse {
   };
 }
 
+export interface NavidromePlaylist {
+  id: string;
+  name: string;
+  songCount: number;
+  duration: number;
+}
+
+interface PlaylistsResponse {
+  "subsonic-response"?: {
+    status?: string;
+    error?: { message?: string };
+    playlists?: { playlist?: NavidromePlaylist[] | NavidromePlaylist };
+  };
+}
+
 function subsonicUrl(config: NavidromeConfig, method: string, parameters: Record<string, string>): URL {
   const base = config.endpoint.replace(/\/+$/, "");
   const url = new URL(`${base}/rest/${method}.view`);
@@ -48,9 +63,25 @@ function fetcher(config: NavidromeConfig): typeof fetch {
   return config.fetcher ?? fetch;
 }
 
+export async function listNavidromePlaylists(config: NavidromeConfig): Promise<NavidromePlaylist[]> {
+  const response = await fetcher(config)(subsonicUrl(config, "getPlaylists", {}));
+  if (!response.ok) throw new Error(`Navidrome playlists request failed: HTTP ${response.status}`);
+  if (!response.headers.get("content-type")?.includes("json")) {
+    throw new Error("Navidrome playlists request did not return JSON; check the server URL");
+  }
+  const payload = await response.json() as PlaylistsResponse;
+  const body = payload["subsonic-response"];
+  if (body?.status !== "ok") throw new Error(`Navidrome playlists request failed: ${body?.error?.message ?? "invalid response"}`);
+  const playlists = body.playlists?.playlist;
+  return Array.isArray(playlists) ? playlists : playlists ? [playlists] : [];
+}
+
 async function playlistSongs(config: NavidromeConfig, playlistId: string): Promise<Song[]> {
   const response = await fetcher(config)(subsonicUrl(config, "getPlaylist", { id: playlistId }));
   if (!response.ok) throw new Error(`Navidrome playlist request failed: HTTP ${response.status}`);
+  if (!response.headers.get("content-type")?.includes("json")) {
+    throw new Error("Navidrome playlist request did not return JSON; check the server URL");
+  }
   const payload = await response.json() as PlaylistResponse;
   const body = payload["subsonic-response"];
   if (body?.status !== "ok") throw new Error(`Navidrome playlist request failed: ${body?.error?.message ?? "invalid response"}`);

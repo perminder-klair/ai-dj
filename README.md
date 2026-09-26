@@ -24,6 +24,7 @@ pnpm install
 export NAVIDROME_URL=https://your-navidrome.example
 export NAVIDROME_USER=your-user
 export NAVIDROME_PASSWORD=your-password
+pnpm list:navidrome # find the playlist ID; prints metadata only
 pnpm import:navidrome PLAYLIST_ID /absolute/path/to/music ./event-settings.json ./event-manifest.json
 pnpm prepare ./event-manifest.json /absolute/path/to/music /absolute/path/to/new-state
 cp .env.example .env

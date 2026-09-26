@@ -5,6 +5,7 @@
   "scripts": {
     "prepare": "node controller/prepare.ts",
     "import:navidrome": "node controller/import-navidrome.ts",
+    "list:navidrome": "node controller/list-navidrome.ts",
     "sync": "node controller/sync.ts",
     "serve": "node controller/serve.ts",
     "control": "node controller/control.ts",

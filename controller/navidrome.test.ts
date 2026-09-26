@@ -4,7 +4,33 @@ import test from "node:test";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { importNavidromePlaylist, saveManifest } from "./navidrome.ts";
+import { importNavidromePlaylist, listNavidromePlaylists, saveManifest } from "./navidrome.ts";
+
+test("lists Navidrome playlists without exposing the password", async () => {
+  const playlists = await listNavidromePlaylists({
+    endpoint: "https://music.example", username: "test-user", password: "test-password",
+    fetcher: async (input) => {
+      const url = new URL(String(input));
+      assert.equal(url.pathname, "/rest/getPlaylists.view");
+      assert.equal(url.searchParams.get("u"), "test-user");
+      assert.equal(url.searchParams.has("p"), false);
+      assert.equal(url.searchParams.get("t"), createHash("md5").update(`test-password${url.searchParams.get("s")}`).digest("hex"));
+      return Response.json({ "subsonic-response": { status: "ok", playlists: { playlist: [
+        { id: "playlist-1", name: "Warmup", songCount: 60, duration: 18000 },
+      ] } } });
+    },
+  });
+  assert.deepEqual(playlists, [{ id: "playlist-1", name: "Warmup", songCount: 60, duration: 18000 }]);
+});
+
+test("rejects a radio website URL in place of the Navidrome API", async () => {
+  await assert.rejects(
+    listNavidromePlaylists({ endpoint: "https://radio.example", username: "test-user", password: "test-password",
+      fetcher: async () => new Response("<html>Radio</html>", { headers: { "content-type": "text/html" } }),
+    }),
+    /did not return JSON; check the server URL/,
+  );
+});
 
 test("imports one Navidrome playlist, deduplicates membership, and stores no credentials", async (context) => {
   const directory = await mkdtemp(join(tmpdir(), "ai-dj-navidrome-"));
