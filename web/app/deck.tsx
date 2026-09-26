@@ -207,13 +207,38 @@ export default function Deck() {
       return;
     }
     try {
-      await audio.play();
+      await playAudio(audio);
       setListening(true);
       setActionError("");
     } catch {
       setActionError(
         "Audio is unavailable. Check that the venue stream is running.",
       );
+    }
+  }
+
+  async function playAudio(audio: HTMLAudioElement) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      audio.load();
+      try {
+        await audio.play();
+        return;
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => window.setTimeout(resolve, 750));
+      }
+    }
+  }
+
+  async function startAndListen() {
+    const resumed = state?.status === "paused";
+    const started = await command(resumed ? "resume" : "start", {}, resumed ? "Playback resumed" : "Playback started");
+    if (!started || !audioRef.current?.paused) return;
+    try {
+      await playAudio(audioRef.current);
+      setListening(true);
+    } catch {
+      setActionError("DJ is on air, but browser audio could not start. Press Listen to try again.");
     }
   }
 
@@ -355,15 +380,7 @@ export default function Deck() {
               ) : (
                 <button
                   className="main-control"
-                  onClick={() =>
-                    void command(
-                      status === "paused" ? "resume" : "start",
-                      {},
-                      status === "paused"
-                        ? "Playback resumed"
-                        : "Playback started",
-                    )
-                  }
+                  onClick={() => void startAndListen()}
                   disabled={!canControl}
                 >
                   <span className="control-symbol">▶</span>
